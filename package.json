@@ -4,12 +4,19 @@
   "description": "PoW Bitcoin Miner Simulator with server backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
+  "keywords": ["bitcoin", "pow", "miner", "blockchain", "backend"],
+  "author": "Your Name",
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.6.0",
-    "bitcoinjs-lib": "^7.0.0",
+    "bitcoinjs-lib": "^6.1.7",
     "body-parser": "^1.20.2",
     "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
