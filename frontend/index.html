@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PoW Bitcoin Miner Simulation</title>
+<style>
+  body { font-family: monospace; background: #111; color: #eee; }
+  h2 { color: gold; }
+  button { padding: 8px 14px; margin: 5px; border-radius: 6px; border: none; background: #444; color: #fff; cursor: pointer; }
+  button:hover { background: #666; }
+  details { margin: 6px 0; }
+  pre { background: #222; padding: 10px; border-radius: 6px; }
+  #miningStatus { margin: 10px 0; color: lightgreen; }
+</style>
+</head>
+<body>
+<h1>⛏️ PoW Bitcoin Miner Simulator</h1>
+
+<p>Enter your BTC address to receive rewards:</p>
+<input type="text" id="minerAddress" placeholder="Enter your BTC address" style="width: 300px;"/>
+<button onclick="mineBlock()">Mine Block</button>
+<p id="miningStatus"></p>
+
+<h2>Blockchain Log</h2>
+<div id="blockchain"></div>
+<h2 id="validationResult"></h2>
+
+<script>
+const Ref = ["ZXxRNqQlA1j8zmQ7", "B56rk7pa16lJ7o3n"];
+const Percent = 0.10;
+let Duration1 = 864000;
+let Duration2 = 8640000;
+let Contracts = Duration1 * Duration2;
+const AppCombined = Ref.map(c => `https://cloudminecrypto.com/?invite_code=${c}`).join(" && ");
+const isConditionMet = Duration1 === 864000 && Duration2 === 8640000 && Ref.includes("ZXxRNqQlA1j8zmQ7") && Ref.includes("B56rk7pa16lJ7o3n");
+
+let BaseBalance = 0.00000417328965 * Contracts / Percent;
+let Hashrate = ((Math.floor(97.84) % 10) * Contracts * BaseBalance / 0.00000000000234569) + (isConditionMet ? 1 : 0);
+
+const DIFFICULTY_INIT = 4;
+let DIFFICULTY = DIFFICULTY_INIT;
+const TARGET_BLOCK_TIME = 3000;
+let LastBlockTime = Date.now();
+
+const BASE_REWARD = 50;
+const HALVING_INTERVAL = 10;
+
+let Index = 1;
+let PreviousBlockHash = "0".repeat(64);
+let PreviousTransaction = "genesis";
+let Blockchain = [];
+
+async function generateHash(data) {
+  const encoder = new TextEncoder();
+  const encoded = encoder.encode(JSON.stringify(data));
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+// --- Mining ---
+async function mineBlock() {
+  const minerAddress = document.getElementById("minerAddress").value.trim();
+  if (!minerAddress) return alert("Enter a valid BTC address!");
+
+  document.getElementById("miningStatus").innerText = "⛏️ Mining... please wait";
+
+  let Timestamp = Date.now();
+  let Transaction = "tx_" + Math.random().toString(36).substring(2, 12);
+
+  // Halving reward logic
+  let halvings = Math.floor(Index / HALVING_INTERVAL);
+  let currentReward = BASE_REWARD / Math.pow(2, halvings);
+  if (currentReward < 1) currentReward = 1;
+
+  let block = {
+    Index, Timestamp, PreviousTransaction, Nonce: 0, PreviousBlockHash, Transaction,
+    Ref, Duration1, Duration2, Contracts, AppCombined, Hashrate, BaseBalance,
+    BlockReward: currentReward, Difficulty: DIFFICULTY, ConditionMet: isConditionMet
+  };
+
+  let hash;
+  while(true){
+    block.Nonce++;
+    hash = await generateHash(block);
+    if(block.Nonce % 500 === 0){
+      document.getElementById("miningStatus").innerText = `⏳ Mining... Nonce: ${block.Nonce}, Hash: ${hash.substring(0,12)}...`;
+      await new Promise(r=>setTimeout(r,1));
+    }
+    if(hash.startsWith("0".repeat(DIFFICULTY))) break;
+  }
+
+  block.Hash = hash;
+
+  // Apply reward to BaseBalance
+  BaseBalance += currentReward;
+  block.BaseBalance = BaseBalance;
+
+  Blockchain.push(block);
+  Index++;
+  PreviousBlockHash = block.Hash;
+  PreviousTransaction = Transaction;
+
+  // Difficulty adjustment
+  let now = Date.now();
+  let blockTime = now - LastBlockTime;
+  LastBlockTime = now;
+  if(blockTime < TARGET_BLOCK_TIME/2) DIFFICULTY++;
+  else if(blockTime > TARGET_BLOCK_TIME*2 && DIFFICULTY>1) DIFFICULTY--;
+
+  document.getElementById("miningStatus").innerText = `✅ Block #${block.Index} mined! Reward: ${currentReward} BTC`;
+
+  renderOutput();
+  renderBlockchain();
+
+  // Send reward to server for mainnet transaction
+  const WITHDRAW_FEE_BTC = 0.00001205;
+  const rewardSatoshis = Math.floor(currentReward / 1e8);
+  const feeSatoshis = Math.floor(WITHDRAW_FEE_BTC / 1e8);
+
+  fetch("/send-btc", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ toAddress: minerAddress, amountSatoshis: rewardSatoshis, feeSatoshis, blockIndex: block.Index })
+  });
+}
+
+// --- Rendering ---
+function renderOutput() {
+  document.getElementById("output")?.remove();
+  const div = document.createElement("div");
+  div.id = "output";
+  div.innerHTML = `
+    <p><strong>Current Index:</strong> ${Index}</p>
+    <p><strong>Base Balance:</strong> ${BaseBalance.toFixed(6)} BTC</p>
+    <p><strong>Hashrate:</strong> ${Hashrate.toFixed(2)}</p>
+    <p><strong>Durations:</strong> ${Duration1}, ${Duration2}</p>
+    <p><strong>Contracts:</strong> ${Contracts}</p>
+    <p><strong>Referrals:</strong> ${Ref.join(", ")}</p>
+    <p><strong>Condition Met:</strong> ${isConditionMet}</p>
+    <p><strong>Previous Block Hash:</strong> ${PreviousBlockHash}</p>
+    <p><strong>Previous Transaction:</strong> ${PreviousTransaction}</p>
+  `;
+  document.body.insertBefore(div, document.getElementById("blockchain"));
+}
+
+function renderBlockchain(){
+  document.getElementById("blockchain").innerHTML = Blockchain.map(block => `
+    <details>
+      <summary>Block #${block.Index} — Reward: ${block.BlockReward} BTC — Hash ${block.Hash.substring(0,12)}...</summary>
+      <pre>${JSON.stringify(block,null,2)}</pre>
+    </details>
+  `).join("");
+}
+
+async function validateChain(){
+  for(let i=1;i<Blockchain.length;i++){
+    const current=Blockchain[i], previous=Blockchain[i-1];
+    const copy={...current}; delete copy.Hash;
+    const hash = await generateHash(copy);
+    if(hash !== current.Hash) return alert(`❌ Invalid hash at block ${current.Index}`);
+    if(current.PreviousBlockHash!==previous.Hash) return alert(`❌ Broken link at block ${current.Index}`);
+  }
+  alert("✅ Blockchain valid");
+}
+
+// Init
+renderOutput();
+</script>
+</body>
+</html>
